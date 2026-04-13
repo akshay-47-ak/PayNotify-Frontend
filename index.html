@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UPI Payment Demo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="container">
+
+    <h2>UPI Payment Demo</h2>
+
+    <!-- Generate QR -->
+    <div class="card">
+        <h3>Generate QR</h3>
+
+        <input type="text" id="merchantName" placeholder="Merchant Name" value="DP Jewellers">
+        <input type="text" id="upiId" placeholder="UPI ID" value="merchant@paytm">
+        <input type="number" id="amount" placeholder="Amount" value="150">
+        <input type="text" id="transactionRef" placeholder="Transaction Ref" value="ORD123">
+        <input type="text" id="note" placeholder="Note" value="Test Payment">
+
+        <button onclick="generateQr()">Generate QR</button>
+    </div>
+
+    <!-- QR Display -->
+    <div class="card">
+        <h3>QR Display</h3>
+        <img id="qrImage" src="" alt="QR Code">
+        <p id="paymentId"></p>
+        <p id="status">Status: PENDING</p>
+    </div>
+
+    <!-- Notification Panel -->
+    <div class="card">
+        <h3>Send Notification</h3>
+
+        <textarea id="notificationMessage" placeholder="Enter notification message">
+Rs 150 received from Amit UPI Ref no 123456789012
+        </textarea>
+
+        <button onclick="sendNotification()">Send Notification</button>
+    </div>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
