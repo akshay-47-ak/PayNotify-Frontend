@@ -31,7 +31,8 @@ async function generateQr() {
             document.getElementById("qrImage").src = "data:image/png;base64," + qrBase64;
 
             currentPaymentId = data.data.paymentId;
-            document.getElementById("paymentId").innerText = "Payment ID: " + currentPaymentId;
+           document.getElementById("paymentId").innerText =
+           "Payment ID: " + currentPaymentId + " | Transaction Ref: " + data.data.transactionRef;
             document.getElementById("status").innerText = "Status: WAITING_FOR_PAYMENT";
 
             startPolling();
