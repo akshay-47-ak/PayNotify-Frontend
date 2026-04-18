@@ -2,41 +2,101 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UPI Payment Demo</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<div class="container">
+<div class="page">
+    <div class="container">
 
-    <h2>UPI Payment Demo</h2>
+        <div class="header">
+            <h1>UPI Payment Demo</h1>
+            <p>Generate QR and track live payment status</p>
+        </div>
 
-    <div class="card">
-        <h3>Generate QR</h3>
+        <div class="grid">
 
-        <input type="text" id="merchantName" placeholder="Merchant Name" value="DP Jewellers">
-        <input type="text" id="upiId" placeholder="UPI ID" value="akshayathavale123-1@oksbi">
-        <input type="number" id="amount" placeholder="Amount" value="1">
-        <input type="text" id="transactionRef" placeholder="Transaction Ref" value="ORD123">
-        <input type="text" id="note" placeholder="Note" value="PADMPAY-TXN123456">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Generate QR</h2>
+                    <span class="tag">Payment Setup</span>
+                </div>
 
-        <button onclick="generateQr()">Generate QR</button>
+                <div class="form-group">
+                    <label for="merchantName">Merchant Name</label>
+                    <input type="text" id="merchantName" placeholder="Merchant Name" value="DP Jewellers">
+                </div>
+
+                <div class="form-group">
+                    <label for="upiId">UPI ID</label>
+                    <input type="text" id="upiId" placeholder="UPI ID" value="akshayathavale123-1@oksbi">
+                </div>
+
+                <div class="form-group">
+                    <label for="amount">Amount</label>
+                    <input type="number" id="amount" placeholder="Amount" value="1">
+                </div>
+
+                <button class="primary-btn" onclick="generateQr()">Generate QR</button>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2>QR Display</h2>
+                    <span class="tag">Live Status</span>
+                </div>
+
+                <div class="qr-box">
+                    <img id="qrImage" src="" alt="QR Code">
+                    <div class="qr-placeholder" id="qrPlaceholder">
+                        QR code will appear here
+                    </div>
+                </div>
+
+                <div class="info-list">
+                    <div class="info-item">
+                        <span class="label">Payment ID</span>
+                        <p id="paymentId">-</p>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="label">Transaction Ref</span>
+                        <p id="transactionRef">-</p>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="label">Payment Status</span>
+                        <p id="status" class="status-pill pending">PENDING</p>
+                    </div>
+
+                    <div class="info-item">
+                        <span class="label">WebSocket</span>
+                        <p id="socketStatus" class="status-pill disconnected">DISCONNECTED</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
-
-    <div class="card">
-        <h3>QR Display</h3>
-
-        <img id="qrImage" src="" alt="QR Code">
-
-        <p id="paymentId"></p>
-        <p id="status">Status: PENDING</p>
-        <p id="socketStatus">WebSocket: DISCONNECTED</p>
-    </div>
-
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
 <script src="script.js"></script>
+
+<script>
+    const qrImage = document.getElementById("qrImage");
+    const qrPlaceholder = document.getElementById("qrPlaceholder");
+
+    qrImage.addEventListener("load", function () {
+        if (qrImage.src && qrImage.src.trim() !== "") {
+            qrPlaceholder.style.display = "none";
+            qrImage.style.display = "block";
+        }
+    });
+</script>
+
 </body>
 </html>

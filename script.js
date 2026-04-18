@@ -14,9 +14,7 @@ async function generateQr() {
     const request = {
         merchantName: document.getElementById("merchantName").value,
         upiId: document.getElementById("upiId").value,
-        amount: parseFloat(document.getElementById("amount").value),
-        transactionRef: document.getElementById("transactionRef").value,
-        note: document.getElementById("note").value
+        amount: parseFloat(document.getElementById("amount").value)
     };
 
     try {
@@ -38,7 +36,10 @@ async function generateQr() {
             currentPaymentId = data.data.paymentId;
 
             document.getElementById("paymentId").innerText =
-                "Payment ID: " + currentPaymentId + " | Transaction Ref: " + data.data.transactionRef;
+                "Payment ID: " + currentPaymentId;
+
+            document.getElementById("transactionRef").innerText =
+                "Transaction Ref: " + (data.data.transactionRef || "");
 
             document.getElementById("status").innerText = "Status: WAITING_FOR_PAYMENT";
 
@@ -167,6 +168,9 @@ function updateSocketStatus(status) {
 function resetUiForNewPayment() {
     clearFallbackStatusCheck();
     document.getElementById("status").innerText = "Status: PENDING";
+    document.getElementById("paymentId").innerText = "";
+    document.getElementById("transactionRef").innerText = "";
+    document.getElementById("qrImage").src = "";
 
     if (isSocketConnected) {
         updateSocketStatus("CONNECTED");
