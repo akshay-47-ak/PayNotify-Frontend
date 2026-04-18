@@ -11,7 +11,6 @@
 
     <h2>UPI Payment Demo</h2>
 
-    <!-- Generate QR -->
     <div class="card">
         <h3>Generate QR</h3>
 
@@ -24,7 +23,6 @@
         <button onclick="generateQr()">Generate QR</button>
     </div>
 
-    <!-- QR Display -->
     <div class="card">
         <h3>QR Display</h3>
 
@@ -32,10 +30,13 @@
 
         <p id="paymentId"></p>
         <p id="status">Status: PENDING</p>
+        <p id="socketStatus">WebSocket: DISCONNECTED</p>
     </div>
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

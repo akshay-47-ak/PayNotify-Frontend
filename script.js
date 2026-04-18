@@ -1,11 +1,16 @@
 let currentPaymentId = null;
-let pollingInterval = null;
-let pollingCount = 0;
-const MAX_POLL_COUNT = 40; // 40 * 3 sec = 120 sec
+let stompClient = null;
+let currentSubscription = null;
+let fallbackTimeout = null;
+let isSocketConnected = false;
 
 const BASE_URL = "http://localhost:8080/api/payment";
+const WS_URL = "http://localhost:8080/ws";
 
 async function generateQr() {
+    resetUiForNewPayment();
+    unsubscribeCurrentPayment();
+
     const request = {
         merchantName: document.getElementById("merchantName").value,
         upiId: document.getElementById("upiId").value,
@@ -25,17 +30,20 @@ async function generateQr() {
 
         const data = await response.json();
 
-        if (data.success) {
+        if (data.success && data.data) {
             const qrBase64 = data.data.qrImageBase64;
 
             document.getElementById("qrImage").src = "data:image/png;base64," + qrBase64;
 
             currentPaymentId = data.data.paymentId;
-           document.getElementById("paymentId").innerText =
-           "Payment ID: " + currentPaymentId + " | Transaction Ref: " + data.data.transactionRef;
+
+            document.getElementById("paymentId").innerText =
+                "Payment ID: " + currentPaymentId + " | Transaction Ref: " + data.data.transactionRef;
+
             document.getElementById("status").innerText = "Status: WAITING_FOR_PAYMENT";
 
-            startPolling();
+            connectWebSocketAndSubscribe(currentPaymentId);
+            startFallbackStatusCheck();
         } else {
             alert("Error generating QR");
         }
@@ -45,21 +53,133 @@ async function generateQr() {
     }
 }
 
-function startPolling() {
-    stopPolling();
-    pollingCount = 0;
+function connectWebSocketAndSubscribe(paymentId) {
+    if (!paymentId) {
+        return;
+    }
 
-    pollingInterval = setInterval(async () => {
-        if (!currentPaymentId) {
-            stopPolling();
-            return;
+    if (stompClient && isSocketConnected) {
+        subscribeToPaymentTopic(paymentId);
+        return;
+    }
+
+    const socket = new SockJS(WS_URL);
+    stompClient = Stomp.over(socket);
+    stompClient.debug = null;
+
+    updateSocketStatus("CONNECTING");
+
+    stompClient.connect(
+        {},
+        function () {
+            isSocketConnected = true;
+            updateSocketStatus("CONNECTED");
+            subscribeToPaymentTopic(paymentId);
+        },
+        function (error) {
+            console.error("WebSocket connection error:", error);
+            isSocketConnected = false;
+            updateSocketStatus("ERROR");
         }
+    );
+}
 
-        pollingCount++;
+function subscribeToPaymentTopic(paymentId) {
+    if (!stompClient || !isSocketConnected) {
+        return;
+    }
 
-        if (pollingCount > MAX_POLL_COUNT) {
-            document.getElementById("status").innerText = "Status: TIMEOUT";
-            stopPolling();
+    unsubscribeCurrentPayment();
+
+    const destination = "/topic/payment/" + paymentId;
+
+    currentSubscription = stompClient.subscribe(destination, function (message) {
+        try {
+            const event = JSON.parse(message.body || "{}");
+            handlePaymentEvent(event);
+        } catch (e) {
+            console.error("Failed to parse WebSocket event:", e);
+        }
+    });
+
+    updateSocketStatus("CONNECTED");
+    console.log("Subscribed to:", destination);
+}
+
+function handlePaymentEvent(event) {
+    if (!event || !event.paymentId) {
+        return;
+    }
+
+    if (currentPaymentId !== event.paymentId) {
+        return;
+    }
+
+    const status = (event.status || "UNKNOWN").toString();
+    document.getElementById("status").innerText = "Status: " + status;
+
+    if (status === "SUCCESS") {
+        clearFallbackStatusCheck();
+        unsubscribeCurrentPayment();
+        alert("Payment Successful ✅");
+    } else if (status === "FAILED" || status === "PENDING_REVIEW" || status === "EXPIRED") {
+        clearFallbackStatusCheck();
+        unsubscribeCurrentPayment();
+    }
+}
+
+function unsubscribeCurrentPayment() {
+    if (currentSubscription) {
+        try {
+            currentSubscription.unsubscribe();
+        } catch (e) {
+            console.error("Unsubscribe error:", e);
+        }
+        currentSubscription = null;
+    }
+}
+
+function disconnectWebSocket() {
+    unsubscribeCurrentPayment();
+
+    if (stompClient) {
+        try {
+            stompClient.disconnect(() => {
+                isSocketConnected = false;
+                updateSocketStatus("DISCONNECTED");
+            });
+        } catch (e) {
+            console.error("Disconnect error:", e);
+            isSocketConnected = false;
+            updateSocketStatus("DISCONNECTED");
+        }
+        stompClient = null;
+    } else {
+        isSocketConnected = false;
+        updateSocketStatus("DISCONNECTED");
+    }
+}
+
+function updateSocketStatus(status) {
+    document.getElementById("socketStatus").innerText = "WebSocket: " + status;
+}
+
+function resetUiForNewPayment() {
+    clearFallbackStatusCheck();
+    document.getElementById("status").innerText = "Status: PENDING";
+
+    if (isSocketConnected) {
+        updateSocketStatus("CONNECTED");
+    } else {
+        updateSocketStatus("DISCONNECTED");
+    }
+}
+
+function startFallbackStatusCheck() {
+    clearFallbackStatusCheck();
+
+    fallbackTimeout = setTimeout(async () => {
+        if (!currentPaymentId) {
             return;
         }
 
@@ -72,26 +192,23 @@ function startPolling() {
                 document.getElementById("status").innerText = "Status: " + status;
 
                 if (status === "SUCCESS") {
-                    stopPolling();
+                    unsubscribeCurrentPayment();
                     alert("Payment Successful ✅");
-                } else if (status === "FAILED" || status === "PENDING_REVIEW") {
-                    stopPolling();
                 }
-            } else {
-                stopPolling();
-                document.getElementById("status").innerText = "Status: ERROR";
             }
         } catch (e) {
-            console.error("Polling error:", e);
-            stopPolling();
-            document.getElementById("status").innerText = "Status: ERROR";
+            console.error("Fallback status check error:", e);
         }
-    }, 3000);
+    }, 15000);
 }
 
-function stopPolling() {
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
+function clearFallbackStatusCheck() {
+    if (fallbackTimeout) {
+        clearTimeout(fallbackTimeout);
+        fallbackTimeout = null;
     }
 }
+
+window.addEventListener("beforeunload", function () {
+    disconnectWebSocket();
+});
