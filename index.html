@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UPI Payment Demo</title>
+    <title>PADM Payment Notification Demo</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,16 +12,54 @@
     <div class="container">
 
         <div class="header">
-            <h1>UPI Payment Demo</h1>
-            <p>Generate QR and track live payment status</p>
+            <h1>PADM Payment Notification Demo</h1>
+            <p>Enterprise setup, QR generation, and live payment tracking</p>
         </div>
 
-        <div class="grid">
+        <div class="grid three-col">
 
+            <!-- Enterprise Creation -->
+            <div class="card">
+                <div class="card-header">
+                    <h2>Create Enterprise</h2>
+                    <span class="tag">Setup</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="enterpriseCode">Enterprise Code</label>
+                    <input type="text" id="enterpriseCode" placeholder="Example: ENT1001">
+                </div>
+
+                <div class="form-group">
+                    <label for="enterpriseName">Enterprise Name</label>
+                    <input type="text" id="enterpriseName" placeholder="Example: DP Jewellers">
+                </div>
+
+                <div class="form-group">
+                    <label for="liveFrom">Live From</label>
+                    <input type="datetime-local" id="liveFrom">
+                </div>
+
+                <button class="primary-btn" onclick="createEnterprise()">Create Enterprise</button>
+
+                <div class="mini-result" id="enterpriseResult">No enterprise created yet</div>
+            </div>
+
+            <!-- QR Generation -->
             <div class="card">
                 <div class="card-header">
                     <h2>Generate QR</h2>
                     <span class="tag">Payment Setup</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="paymentEnterpriseCode">Enterprise Code</label>
+                    <input type="text" id="paymentEnterpriseCode" placeholder="Example: ENT1001">
+                </div>
+
+                <div class="form-group">
+                    <label for="terminalId">Terminal ID</label>
+                    <input type="text" id="terminalId" placeholder="Example: TERM-1">
                 </div>
 
                 <div class="form-group">
@@ -42,6 +80,7 @@
                 <button class="primary-btn" onclick="generateQr()">Generate QR</button>
             </div>
 
+            <!-- QR Display -->
             <div class="card">
                 <div class="card-header">
                     <h2>QR Display</h2>
@@ -67,6 +106,11 @@
                     </div>
 
                     <div class="info-item">
+                        <span class="label">Terminal ID</span>
+                        <p id="currentTerminalId">-</p>
+                    </div>
+
+                    <div class="info-item">
                         <span class="label">Payment Status</span>
                         <p id="status" class="status-pill pending">PENDING</p>
                     </div>
@@ -79,6 +123,17 @@
             </div>
 
         </div>
+
+        <div class="card log-card">
+            <div class="card-header">
+                <h2>Logs</h2>
+                <span class="tag">Debug</span>
+            </div>
+            <div id="logs" class="logs">
+                <div class="log-empty">No logs yet</div>
+            </div>
+        </div>
+
     </div>
 </div>
 
