@@ -1,5 +1,6 @@
 let currentPaymentId = null;
 let currentTerminalId = null;
+let currentDocumentOwnCode = null;
 let stompClient = null;
 let currentSubscription = null;
 let fallbackTimeout = null;
@@ -10,17 +11,15 @@ const PAYMENT_BASE_URL = "http://localhost:8080/api/payment";
 const WS_URL = "http://localhost:8080/ws";
 
 async function createEnterprise() {
-    const enterpriseCode = document.getElementById("enterpriseCode").value.trim();
     const enterpriseName = document.getElementById("enterpriseName").value.trim();
     const liveFrom = document.getElementById("liveFrom").value;
 
-    if (!enterpriseCode || !enterpriseName) {
-        alert("Please enter enterprise code and enterprise name");
+    if (!enterpriseName) {
+        alert("Please enter enterprise name");
         return;
     }
 
     const request = {
-        enterpriseCode: enterpriseCode,
         enterpriseName: enterpriseName,
         liveFrom: liveFrom ? new Date(liveFrom).toISOString() : null
     };
@@ -37,17 +36,24 @@ async function createEnterprise() {
         const data = await response.json();
 
         if (data.success && data.data) {
+            const generatedEnterpriseCode = data.data.enterpriseCode || "";
+            const createdEnterpriseName = data.data.enterpriseName || enterpriseName;
+
             document.getElementById("enterpriseResult").innerText =
-                "Created: " + (data.data.enterpriseCode || enterpriseCode) +
-                " | " + (data.data.enterpriseName || enterpriseName);
+                "Created: " + generatedEnterpriseCode + " | " + createdEnterpriseName;
 
             document.getElementById("paymentEnterpriseCode").value =
-                data.data.enterpriseCode || enterpriseCode;
+                generatedEnterpriseCode;
 
-            addLog("Enterprise created successfully: " + enterpriseCode);
+            addLog(
+                "Enterprise created successfully | enterpriseCode=" +
+                generatedEnterpriseCode +
+                " | enterpriseName=" +
+                createdEnterpriseName
+            );
         } else {
             alert(data.message || "Failed to create enterprise");
-            addLog("Enterprise creation failed");
+            addLog("Enterprise creation failed: " + (data.message || ""));
         }
     } catch (e) {
         console.error("Enterprise creation error:", e);
@@ -60,12 +66,25 @@ async function generateQr() {
     resetUiForNewPayment();
     unsubscribeCurrentPayment();
 
+    const enterpriseCode = document.getElementById("paymentEnterpriseCode").value.trim();
+    const terminalId = document.getElementById("terminalId").value.trim();
+    const merchantName = document.getElementById("merchantName").value.trim();
+    const upiId = document.getElementById("upiId").value.trim();
+    const amount = parseFloat(document.getElementById("amount").value);
+    const documentOwnCodeValue = document.getElementById("documentOwnCode").value.trim();
+
+    const documentOwnCode = documentOwnCodeValue
+        ? parseInt(documentOwnCodeValue, 10)
+        : null;
+
     const request = {
-        enterpriseCode: document.getElementById("paymentEnterpriseCode").value.trim(),
-        terminalId: document.getElementById("terminalId").value.trim(),
-        merchantName: document.getElementById("merchantName").value.trim(),
-        upiId: document.getElementById("upiId").value.trim(),
-        amount: parseFloat(document.getElementById("amount").value)
+        enterpriseCode: enterpriseCode,
+        terminalId: terminalId,
+        merchantName: merchantName,
+        upiId: upiId,
+        amount: amount,
+        sourceApp: "WEB",
+        documentOwnCode: documentOwnCode
     };
 
     if (!request.enterpriseCode) {
@@ -83,6 +102,11 @@ async function generateQr() {
         return;
     }
 
+    if (documentOwnCodeValue && Number.isNaN(documentOwnCode)) {
+        alert("Please enter valid document own code");
+        return;
+    }
+
     try {
         const response = await fetch(PAYMENT_BASE_URL + "/qr/generate", {
             method: "POST",
@@ -97,14 +121,20 @@ async function generateQr() {
         if (data.success && data.data) {
             const qrBase64 = data.data.qrImageBase64;
 
-            document.getElementById("qrImage").src = "data:image/png;base64," + qrBase64;
+            document.getElementById("qrImage").src =
+                "data:image/png;base64," + qrBase64;
 
             currentPaymentId = data.data.paymentId;
             currentTerminalId = data.data.terminalId || request.terminalId;
+            currentDocumentOwnCode = data.data.documentOwnCode || request.documentOwnCode;
 
             document.getElementById("paymentId").innerText = currentPaymentId || "-";
-            document.getElementById("transactionRef").innerText = data.data.transactionRef || "-";
-            document.getElementById("currentTerminalId").innerText = currentTerminalId || "-";
+            document.getElementById("transactionRef").innerText =
+                data.data.transactionRef || "-";
+            document.getElementById("currentTerminalId").innerText =
+                currentTerminalId || "-";
+            document.getElementById("currentDocumentOwnCode").innerText =
+                currentDocumentOwnCode || "-";
 
             updatePaymentStatus("PENDING");
             connectWebSocketAndSubscribe(currentPaymentId);
@@ -112,11 +142,12 @@ async function generateQr() {
 
             addLog(
                 "QR generated | paymentId=" + currentPaymentId +
-                " | terminalId=" + currentTerminalId
+                " | terminalId=" + currentTerminalId +
+                " | documentOwnCode=" + (currentDocumentOwnCode || "-")
             );
         } else {
             alert(data.message || "Error generating QR");
-            addLog("QR generation failed");
+            addLog("QR generation failed: " + (data.message || ""));
         }
     } catch (e) {
         console.error("Generate QR error:", e);
@@ -206,7 +237,11 @@ function handlePaymentEvent(event) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
         alert("Payment Successful ✅");
-    } else if (status === "FAILED" || status === "PENDING_REVIEW" || status === "EXPIRED") {
+    } else if (
+        status === "FAILED" ||
+        status === "PENDING_REVIEW" ||
+        status === "EXPIRED"
+    ) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
     }
@@ -276,11 +311,14 @@ function resetUiForNewPayment() {
 
     currentPaymentId = null;
     currentTerminalId = null;
+    currentDocumentOwnCode = null;
 
     updatePaymentStatus("PENDING");
     document.getElementById("paymentId").innerText = "-";
     document.getElementById("transactionRef").innerText = "-";
     document.getElementById("currentTerminalId").innerText = "-";
+    document.getElementById("currentDocumentOwnCode").innerText = "-";
+
     document.getElementById("qrImage").src = "";
     document.getElementById("qrImage").style.display = "none";
     document.getElementById("qrPlaceholder").style.display = "block";
@@ -301,14 +339,22 @@ function startFallbackStatusCheck() {
         }
 
         try {
-            const response = await fetch(PAYMENT_BASE_URL + "/status/" + currentPaymentId);
+            const response = await fetch(
+                PAYMENT_BASE_URL + "/status/" + currentPaymentId
+            );
+
             const data = await response.json();
 
             if (data.success && data.data) {
                 const status = data.data.status || "UNKNOWN";
                 updatePaymentStatus(status);
 
-                addLog("Fallback status check | paymentId=" + currentPaymentId + " | status=" + status);
+                addLog(
+                    "Fallback status check | paymentId=" +
+                    currentPaymentId +
+                    " | status=" +
+                    status
+                );
 
                 if (status === "SUCCESS") {
                     unsubscribeCurrentPayment();
