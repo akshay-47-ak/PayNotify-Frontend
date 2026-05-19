@@ -114,6 +114,12 @@ select:focus {
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
 }
 
+input[readonly] {
+    background: #f8fafc;
+    color: #4b5563;
+    cursor: not-allowed;
+}
+
 .primary-btn {
     width: 100%;
     padding: 14px 18px;

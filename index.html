@@ -49,12 +49,24 @@
 
                 <div class="form-group">
                     <label for="paymentEnterpriseCode">Enterprise Code</label>
-                    <input type="text" id="paymentEnterpriseCode" placeholder="Example: AB1234">
+                    <input
+                            type="text"
+                            id="paymentEnterpriseCode"
+                            placeholder="Example: AB1234"
+                            oninput="onEnterpriseCodeChanged()"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="terminalNameSelect">Terminal Name</label>
+                    <select id="terminalNameSelect" onchange="onTerminalSelected()">
+                        <option value="">Enter enterprise code to load terminals</option>
+                    </select>
                 </div>
 
                 <div class="form-group">
                     <label for="terminalId">Terminal ID</label>
-                    <input type="text" id="terminalId" placeholder="Example: TERM-1776506386524">
+                    <input type="text" id="terminalId" placeholder="Terminal ID will auto-fill" readonly>
                 </div>
 
                 <div class="form-group">

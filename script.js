@@ -1,6 +1,11 @@
 let currentPaymentId = null;
 let currentTerminalId = null;
 let currentDocumentOwnCode = null;
+let terminalList = [];
+
+let enterpriseLoadTimer = null;
+let lastLoadedEnterpriseCode = "";
+
 let stompClient = null;
 let currentSubscription = null;
 let fallbackTimeout = null;
@@ -8,6 +13,7 @@ let isSocketConnected = false;
 
 const ENTERPRISE_BASE_URL = "http://localhost:8080/api/enterprise";
 const PAYMENT_BASE_URL = "http://localhost:8080/api/payment";
+const DEVICE_BASE_URL = "http://localhost:8080/api/device";
 const WS_URL = "http://localhost:8080/ws";
 
 async function createEnterprise() {
@@ -51,6 +57,9 @@ async function createEnterprise() {
                 " | enterpriseName=" +
                 createdEnterpriseName
             );
+
+            lastLoadedEnterpriseCode = "";
+            await loadTerminalsByEnterprise();
         } else {
             alert(data.message || "Failed to create enterprise");
             addLog("Enterprise creation failed: " + (data.message || ""));
@@ -59,6 +68,133 @@ async function createEnterprise() {
         console.error("Enterprise creation error:", e);
         alert("Failed to create enterprise");
         addLog("Enterprise creation error: " + e);
+    }
+}
+
+function onEnterpriseCodeChanged() {
+    const enterpriseCode = document.getElementById("paymentEnterpriseCode").value.trim();
+
+    clearTimeout(enterpriseLoadTimer);
+
+    document.getElementById("terminalId").value = "";
+    terminalList = [];
+
+    if (!enterpriseCode) {
+        lastLoadedEnterpriseCode = "";
+        document.getElementById("terminalNameSelect").innerHTML =
+            '<option value="">Enter enterprise code to load terminals</option>';
+        return;
+    }
+
+    document.getElementById("terminalNameSelect").innerHTML =
+        '<option value="">Typing enterprise code...</option>';
+
+    enterpriseLoadTimer = setTimeout(function () {
+        loadTerminalsByEnterprise();
+    }, 600);
+}
+
+async function loadTerminalsByEnterprise() {
+    const enterpriseCode = document.getElementById("paymentEnterpriseCode").value.trim();
+
+    const terminalSelect = document.getElementById("terminalNameSelect");
+    const terminalIdInput = document.getElementById("terminalId");
+
+    terminalSelect.innerHTML = "";
+    terminalIdInput.value = "";
+    terminalList = [];
+
+    if (!enterpriseCode) {
+        lastLoadedEnterpriseCode = "";
+        terminalSelect.innerHTML =
+            '<option value="">Enter enterprise code to load terminals</option>';
+        return;
+    }
+
+    if (enterpriseCode === lastLoadedEnterpriseCode) {
+        return;
+    }
+
+    lastLoadedEnterpriseCode = enterpriseCode;
+
+    terminalSelect.innerHTML =
+        '<option value="">Loading terminals...</option>';
+
+    try {
+        const response = await fetch(
+            DEVICE_BASE_URL + "/terminals?enterpriseCode=" + encodeURIComponent(enterpriseCode)
+        );
+
+        const data = await response.json();
+
+        terminalSelect.innerHTML = "";
+
+        if (!data.success || !data.data || data.data.length === 0) {
+            terminalSelect.innerHTML =
+                '<option value="">No registered terminals found</option>';
+
+            addLog("No active terminals found for enterpriseCode=" + enterpriseCode);
+            return;
+        }
+
+        terminalList = data.data;
+
+        terminalSelect.innerHTML =
+            '<option value="">Select terminal</option>';
+
+        terminalList.forEach(function (terminal) {
+            const option = document.createElement("option");
+
+            option.value = terminal.terminalId;
+
+            const deviceName = terminal.deviceName || "Unnamed Device";
+            const role = terminal.role || "-";
+            const terminalId = terminal.terminalId || "-";
+
+            option.text =
+                deviceName + " | " + role + " | " + terminalId;
+
+            terminalSelect.appendChild(option);
+        });
+
+        addLog(
+            "Loaded " + terminalList.length +
+            " terminal(s) for enterpriseCode=" + enterpriseCode
+        );
+    } catch (e) {
+        console.error("Load terminals error:", e);
+
+        terminalSelect.innerHTML =
+            '<option value="">Failed to load terminals</option>';
+
+        addLog("Load terminals error: " + e);
+    }
+}
+
+function onTerminalSelected() {
+    const terminalSelect = document.getElementById("terminalNameSelect");
+    const terminalIdInput = document.getElementById("terminalId");
+
+    const selectedTerminalId = terminalSelect.value || "";
+    terminalIdInput.value = selectedTerminalId;
+
+    if (!selectedTerminalId) {
+        return;
+    }
+
+    const terminal = terminalList.find(function (item) {
+        return item.terminalId === selectedTerminalId;
+    });
+
+    if (terminal) {
+        addLog(
+            "Selected terminal | name=" +
+            (terminal.deviceName || "-") +
+            " | role=" +
+            (terminal.role || "-") +
+            " | terminalId=" +
+            selectedTerminalId
+        );
     }
 }
 
@@ -93,7 +229,7 @@ async function generateQr() {
     }
 
     if (!request.terminalId) {
-        alert("Please enter terminal ID");
+        alert("Please select terminal");
         return;
     }
 
