@@ -8,13 +8,36 @@ let lastLoadedEnterpriseCode = "";
 
 let stompClient = null;
 let currentSubscription = null;
-let fallbackTimeout = null;
+let fallbackTimer = null;
 let isSocketConnected = false;
 
-const ENTERPRISE_BASE_URL = "http://localhost:8080/api/enterprise";
-const PAYMENT_BASE_URL = "http://localhost:8080/api/payment";
-const DEVICE_BASE_URL = "http://localhost:8080/api/device";
-const WS_URL = "http://localhost:8080/ws";
+const API_BASE_URL = "https://briskly-jawline-grief.ngrok-free.dev";
+const ENTERPRISE_BASE_URL = API_BASE_URL + "/api/enterprise";
+const PAYMENT_BASE_URL = API_BASE_URL + "/api/payment";
+const DEVICE_BASE_URL = API_BASE_URL + "/api/device";
+const WS_URL = API_BASE_URL + "/ws?ngrok-skip-browser-warning=true";
+const FALLBACK_STATUS_INTERVAL_MS = 3000;
+const NGROK_HEADERS = {
+    "ngrok-skip-browser-warning": "true"
+};
+
+async function fetchJson(url, options) {
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            ...NGROK_HEADERS,
+            ...(options && options.headers ? options.headers : {})
+        }
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error("Expected JSON response, got: " + text.slice(0, 120));
+    }
+
+    return response.json();
+}
 
 async function createEnterprise() {
     const enterpriseName = document.getElementById("enterpriseName").value.trim();
@@ -31,15 +54,13 @@ async function createEnterprise() {
     };
 
     try {
-        const response = await fetch(ENTERPRISE_BASE_URL + "/create", {
+        const data = await fetchJson(ENTERPRISE_BASE_URL + "/create", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(request)
         });
-
-        const data = await response.json();
 
         if (data.success && data.data) {
             const generatedEnterpriseCode = data.data.enterpriseCode || "";
@@ -111,7 +132,7 @@ async function loadTerminalsByEnterprise() {
         return;
     }
 
-    if (enterpriseCode === lastLoadedEnterpriseCode) {
+    if (enterpriseCode === lastLoadedEnterpriseCode && terminalList.length > 0) {
         return;
     }
 
@@ -121,11 +142,9 @@ async function loadTerminalsByEnterprise() {
         '<option value="">Loading terminals...</option>';
 
     try {
-        const response = await fetch(
+        const data = await fetchJson(
             DEVICE_BASE_URL + "/terminals?enterpriseCode=" + encodeURIComponent(enterpriseCode)
         );
-
-        const data = await response.json();
 
         terminalSelect.innerHTML = "";
 
@@ -163,6 +182,7 @@ async function loadTerminalsByEnterprise() {
         );
     } catch (e) {
         console.error("Load terminals error:", e);
+        lastLoadedEnterpriseCode = "";
 
         terminalSelect.innerHTML =
             '<option value="">Failed to load terminals</option>';
@@ -244,15 +264,13 @@ async function generateQr() {
     }
 
     try {
-        const response = await fetch(PAYMENT_BASE_URL + "/qr/generate", {
+        const data = await fetchJson(PAYMENT_BASE_URL + "/qr/generate", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(request)
         });
-
-        const data = await response.json();
 
         if (data.success && data.data) {
             const qrBase64 = data.data.qrImageBase64;
@@ -318,8 +336,8 @@ function connectWebSocketAndSubscribe(paymentId) {
         function (error) {
             console.error("WebSocket connection error:", error);
             isSocketConnected = false;
-            updateSocketStatus("ERROR");
-            addLog("WebSocket connection error");
+            updateSocketStatus(currentPaymentId ? "POLLING" : "ERROR");
+            addLog("WebSocket connection error. Using fallback status polling.");
         }
     );
 }
@@ -357,6 +375,7 @@ function handlePaymentEvent(event) {
     }
 
     const status = (event.status || "UNKNOWN").toString();
+    const normalizedStatus = status.toUpperCase();
     updatePaymentStatus(status);
 
     if (event.transactionRef) {
@@ -369,15 +388,11 @@ function handlePaymentEvent(event) {
         " | txnRef=" + (event.transactionRef || "")
     );
 
-    if (status === "SUCCESS") {
+    if (normalizedStatus === "SUCCESS") {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
         alert("Payment Successful ✅");
-    } else if (
-        status === "FAILED" ||
-        status === "PENDING_REVIEW" ||
-        status === "EXPIRED"
-    ) {
+    } else if (isFinalPaymentStatus(status)) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
     }
@@ -423,6 +438,7 @@ function updateSocketStatus(status) {
 
 function getSocketStatusClass(status) {
     if (status === "CONNECTED") return "connected";
+    if (status === "POLLING") return "connected";
     if (status === "ERROR") return "error";
     if (status === "CONNECTING") return "connected";
     return "disconnected";
@@ -469,45 +485,66 @@ function resetUiForNewPayment() {
 function startFallbackStatusCheck() {
     clearFallbackStatusCheck();
 
-    fallbackTimeout = setTimeout(async () => {
-        if (!currentPaymentId) {
-            return;
-        }
+    checkPaymentStatus();
+    fallbackTimer = setInterval(checkPaymentStatus, FALLBACK_STATUS_INTERVAL_MS);
+}
 
-        try {
-            const response = await fetch(
-                PAYMENT_BASE_URL + "/status/" + currentPaymentId
+async function checkPaymentStatus() {
+    if (!currentPaymentId) {
+        clearFallbackStatusCheck();
+        return;
+    }
+
+    try {
+        const data = await fetchJson(
+            PAYMENT_BASE_URL + "/status/" + currentPaymentId
+        );
+
+        if (data.success && data.data) {
+            const status = data.data.status || "UNKNOWN";
+            updatePaymentStatus(status);
+
+            if (data.data.transactionRef) {
+                document.getElementById("transactionRef").innerText =
+                    data.data.transactionRef;
+            }
+
+            addLog(
+                "Fallback status check | paymentId=" +
+                currentPaymentId +
+                " | status=" +
+                status
             );
 
-            const data = await response.json();
+            if (isFinalPaymentStatus(status)) {
+                clearFallbackStatusCheck();
+                unsubscribeCurrentPayment();
 
-            if (data.success && data.data) {
-                const status = data.data.status || "UNKNOWN";
-                updatePaymentStatus(status);
-
-                addLog(
-                    "Fallback status check | paymentId=" +
-                    currentPaymentId +
-                    " | status=" +
-                    status
-                );
-
-                if (status === "SUCCESS") {
-                    unsubscribeCurrentPayment();
+                if (status.toUpperCase() === "SUCCESS") {
                     alert("Payment Successful ✅");
                 }
             }
-        } catch (e) {
-            console.error("Fallback status check error:", e);
-            addLog("Fallback status check error: " + e);
         }
-    }, 15000);
+    } catch (e) {
+        console.error("Fallback status check error:", e);
+        addLog("Fallback status check error: " + e);
+    }
+}
+
+function isFinalPaymentStatus(status) {
+    const value = (status || "").toUpperCase();
+    return (
+        value === "SUCCESS" ||
+        value === "FAILED" ||
+        value === "PENDING_REVIEW" ||
+        value === "EXPIRED"
+    );
 }
 
 function clearFallbackStatusCheck() {
-    if (fallbackTimeout) {
-        clearTimeout(fallbackTimeout);
-        fallbackTimeout = null;
+    if (fallbackTimer) {
+        clearInterval(fallbackTimer);
+        fallbackTimer = null;
     }
 }
 
