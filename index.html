@@ -26,8 +26,25 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="enterpriseCode">Enterprise Code</label>
+                    <input
+                            type="text"
+                            id="enterpriseCode"
+                            placeholder="Example: PADM001"
+                            oninput="normalizeEnterpriseCodeField(this)"
+                    >
+                </div>
+
+                <div class="form-group">
                     <label for="enterpriseName">Enterprise Name</label>
                     <input type="text" id="enterpriseName" placeholder="Example: DP Jewellers">
+                </div>
+
+                <div class="form-group">
+                    <label for="enterpriseDepartment">Department</label>
+                    <select id="enterpriseDepartment">
+                        <option value="">Loading departments...</option>
+                    </select>
                 </div>
 
                 <div class="form-group">

@@ -2,6 +2,7 @@ let currentPaymentId = null;
 let currentTerminalId = null;
 let currentDocumentOwnCode = null;
 let terminalList = [];
+let departmentList = [];
 
 let enterpriseLoadTimer = null;
 let lastLoadedEnterpriseCode = "";
@@ -20,6 +21,20 @@ const FALLBACK_STATUS_INTERVAL_MS = 3000;
 const NGROK_HEADERS = {
     "ngrok-skip-browser-warning": "true"
 };
+const FALLBACK_DEPARTMENTS = [
+    {
+        department: "PADM",
+        departmentCode: 1
+    },
+    {
+        department: "INFINITY",
+        departmentCode: 2
+    },
+    {
+        department: "INSIGHT",
+        departmentCode: 3
+    }
+];
 
 async function fetchJson(url, options) {
     const response = await fetch(url, {
@@ -39,17 +54,73 @@ async function fetchJson(url, options) {
     return response.json();
 }
 
+function normalizeEnterpriseCodeField(input) {
+    input.value = input.value.trim().toUpperCase();
+}
+
+function renderDepartmentOptions(departments) {
+    const departmentSelect = document.getElementById("enterpriseDepartment");
+    departmentSelect.innerHTML = '<option value="">Select department</option>';
+
+    departments.forEach(function (item) {
+        const option = document.createElement("option");
+        option.value = String(item.departmentCode);
+        option.text = item.department + " (" + item.departmentCode + ")";
+        option.dataset.department = item.department;
+        option.dataset.departmentCode = String(item.departmentCode);
+        departmentSelect.appendChild(option);
+    });
+}
+
+async function loadEnterpriseDepartments() {
+    try {
+        const data = await fetchJson(ENTERPRISE_BASE_URL + "/departments");
+
+        if (data.success && Array.isArray(data.data) && data.data.length > 0) {
+            departmentList = data.data;
+            renderDepartmentOptions(departmentList);
+            addLog("Loaded " + departmentList.length + " enterprise department(s)");
+            return;
+        }
+
+        throw new Error(data.message || "No departments returned");
+    } catch (e) {
+        console.error("Load departments error:", e);
+        departmentList = FALLBACK_DEPARTMENTS;
+        renderDepartmentOptions(departmentList);
+        addLog("Using fallback enterprise departments: " + e);
+    }
+}
+
 async function createEnterprise() {
+    const enterpriseCode = document.getElementById("enterpriseCode").value.trim().toUpperCase();
     const enterpriseName = document.getElementById("enterpriseName").value.trim();
+    const departmentSelect = document.getElementById("enterpriseDepartment");
     const liveFrom = document.getElementById("liveFrom").value;
+    const selectedOption = departmentSelect.options[departmentSelect.selectedIndex];
+    const department = selectedOption ? selectedOption.dataset.department : "";
+    const departmentCode = selectedOption ? parseInt(selectedOption.dataset.departmentCode, 10) : null;
+
+    if (!enterpriseCode) {
+        alert("Please enter enterprise code");
+        return;
+    }
 
     if (!enterpriseName) {
         alert("Please enter enterprise name");
         return;
     }
 
+    if (!department || Number.isNaN(departmentCode)) {
+        alert("Please select department");
+        return;
+    }
+
     const request = {
+        enterpriseCode: enterpriseCode,
         enterpriseName: enterpriseName,
+        department: department,
+        departmentCode: departmentCode,
         liveFrom: liveFrom ? new Date(liveFrom).toISOString() : null
     };
 
@@ -63,20 +134,34 @@ async function createEnterprise() {
         });
 
         if (data.success && data.data) {
-            const generatedEnterpriseCode = data.data.enterpriseCode || "";
+            const createdEnterpriseCode = data.data.enterpriseCode || enterpriseCode;
             const createdEnterpriseName = data.data.enterpriseName || enterpriseName;
+            const createdDepartment = data.data.department || department;
+            const createdDepartmentCode = data.data.departmentCode || departmentCode;
 
             document.getElementById("enterpriseResult").innerText =
-                "Created: " + generatedEnterpriseCode + " | " + createdEnterpriseName;
+                "Created: " +
+                createdEnterpriseCode +
+                " | " +
+                createdEnterpriseName +
+                " | " +
+                createdDepartment +
+                " (" +
+                createdDepartmentCode +
+                ")";
 
             document.getElementById("paymentEnterpriseCode").value =
-                generatedEnterpriseCode;
+                createdEnterpriseCode;
 
             addLog(
                 "Enterprise created successfully | enterpriseCode=" +
-                generatedEnterpriseCode +
+                createdEnterpriseCode +
                 " | enterpriseName=" +
-                createdEnterpriseName
+                createdEnterpriseName +
+                " | department=" +
+                createdDepartment +
+                " | departmentCode=" +
+                createdDepartmentCode
             );
 
             lastLoadedEnterpriseCode = "";
@@ -565,4 +650,8 @@ function addLog(message) {
 
 window.addEventListener("beforeunload", function () {
     disconnectWebSocket();
+});
+
+window.addEventListener("DOMContentLoaded", function () {
+    loadEnterpriseDepartments();
 });
