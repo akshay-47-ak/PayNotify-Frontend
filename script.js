@@ -184,6 +184,7 @@ function onEnterpriseCodeChanged() {
 
     document.getElementById("terminalId").value = "";
     terminalList = [];
+    lastLoadedEnterpriseCode = "";
 
     if (!enterpriseCode) {
         lastLoadedEnterpriseCode = "";
@@ -205,9 +206,9 @@ async function loadTerminalsByEnterprise() {
 
     const terminalSelect = document.getElementById("terminalNameSelect");
     const terminalIdInput = document.getElementById("terminalId");
+    const selectedTerminalId = terminalIdInput.value.trim();
 
     terminalSelect.innerHTML = "";
-    terminalIdInput.value = "";
     terminalList = [];
 
     if (!enterpriseCode) {
@@ -233,7 +234,7 @@ async function loadTerminalsByEnterprise() {
 
         terminalSelect.innerHTML = "";
 
-        if (!data.success || !data.data || data.data.length === 0) {
+        if (!data.success || !Array.isArray(data.data) || data.data.length === 0) {
             terminalSelect.innerHTML =
                 '<option value="">No registered terminals found</option>';
 
@@ -260,6 +261,11 @@ async function loadTerminalsByEnterprise() {
 
             terminalSelect.appendChild(option);
         });
+
+        if (selectedTerminalId) {
+            terminalIdInput.value = selectedTerminalId;
+            terminalSelect.value = selectedTerminalId;
+        }
 
         addLog(
             "Loaded " + terminalList.length +
@@ -301,6 +307,23 @@ function onTerminalSelected() {
             selectedTerminalId
         );
     }
+}
+
+function onTerminalIdChanged() {
+    const terminalIdInput = document.getElementById("terminalId");
+    const terminalSelect = document.getElementById("terminalNameSelect");
+    const typedTerminalId = terminalIdInput.value.trim();
+
+    if (!typedTerminalId) {
+        terminalSelect.value = "";
+        return;
+    }
+
+    const terminal = terminalList.find(function (item) {
+        return item.terminalId === typedTerminalId;
+    });
+
+    terminalSelect.value = terminal ? typedTerminalId : "";
 }
 
 async function generateQr() {

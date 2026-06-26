@@ -84,7 +84,12 @@
 
                 <div class="form-group">
                     <label for="terminalId">Terminal ID</label>
-                    <input type="text" id="terminalId" placeholder="Terminal ID will auto-fill" readonly>
+                    <input
+                            type="text"
+                            id="terminalId"
+                            placeholder="Enter terminal ID or select terminal"
+                            oninput="onTerminalIdChanged()"
+                    >
                 </div>
 
                 <div class="form-group">
