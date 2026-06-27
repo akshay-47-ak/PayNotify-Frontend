@@ -1,6 +1,8 @@
 let currentPaymentId = null;
 let currentTerminalId = null;
 let currentDocumentOwnCode = null;
+let currentPhonePeNotificationId = null;
+let successAlertShown = false;
 let terminalList = [];
 let departmentList = [];
 
@@ -15,6 +17,7 @@ let isSocketConnected = false;
 const API_BASE_URL = "https://briskly-jawline-grief.ngrok-free.dev";
 const ENTERPRISE_BASE_URL = API_BASE_URL + "/api/enterprise";
 const PAYMENT_BASE_URL = API_BASE_URL + "/api/payment";
+const PAYMENTS_BASE_URL = API_BASE_URL + "/api/payments";
 const DEVICE_BASE_URL = API_BASE_URL + "/api/device";
 const WS_URL = API_BASE_URL + "/ws?ngrok-skip-browser-warning=true";
 const FALLBACK_STATUS_INTERVAL_MS = 3000;
@@ -56,6 +59,21 @@ async function fetchJson(url, options) {
 
 function normalizeEnterpriseCodeField(input) {
     input.value = input.value.trim().toUpperCase();
+}
+
+function parseOptionalInteger(value) {
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+        return null;
+    }
+
+    const parsedValue = parseInt(trimmedValue, 10);
+    return Number.isNaN(parsedValue) ? NaN : parsedValue;
+}
+
+function displayValue(value) {
+    return value === null || value === undefined || value === "" ? "-" : value;
 }
 
 function renderDepartmentOptions(departments) {
@@ -336,10 +354,13 @@ async function generateQr() {
     const upiId = document.getElementById("upiId").value.trim();
     const amount = parseFloat(document.getElementById("amount").value);
     const documentOwnCodeValue = document.getElementById("documentOwnCode").value.trim();
+    const cashierIdValue = document.getElementById("cashierId").value.trim();
+    const cashierSessionId = document.getElementById("cashierSessionId").value.trim();
+    const branchIdValue = document.getElementById("branchId").value.trim();
 
-    const documentOwnCode = documentOwnCodeValue
-        ? parseInt(documentOwnCodeValue, 10)
-        : null;
+    const documentOwnCode = parseOptionalInteger(documentOwnCodeValue);
+    const cashierId = parseOptionalInteger(cashierIdValue);
+    const branchId = parseOptionalInteger(branchIdValue);
 
     const request = {
         enterpriseCode: enterpriseCode,
@@ -348,7 +369,10 @@ async function generateQr() {
         upiId: upiId,
         amount: amount,
         sourceApp: "WEB",
-        documentOwnCode: documentOwnCode
+        documentOwnCode: documentOwnCode,
+        cashierId: cashierId,
+        cashierSessionId: cashierSessionId || null,
+        branchId: branchId
     };
 
     if (!request.enterpriseCode) {
@@ -371,6 +395,16 @@ async function generateQr() {
         return;
     }
 
+    if (cashierIdValue && Number.isNaN(cashierId)) {
+        alert("Please enter valid cashier ID");
+        return;
+    }
+
+    if (branchIdValue && Number.isNaN(branchId)) {
+        alert("Please enter valid branch ID");
+        return;
+    }
+
     try {
         const data = await fetchJson(PAYMENT_BASE_URL + "/qr/generate", {
             method: "POST",
@@ -388,7 +422,9 @@ async function generateQr() {
 
             currentPaymentId = data.data.paymentId;
             currentTerminalId = data.data.terminalId || request.terminalId;
-            currentDocumentOwnCode = data.data.documentOwnCode || request.documentOwnCode;
+            currentDocumentOwnCode = data.data.documentOwnCode !== null && data.data.documentOwnCode !== undefined
+                ? data.data.documentOwnCode
+                : request.documentOwnCode;
 
             document.getElementById("paymentId").innerText = currentPaymentId || "-";
             document.getElementById("transactionRef").innerText =
@@ -396,16 +432,16 @@ async function generateQr() {
             document.getElementById("currentTerminalId").innerText =
                 currentTerminalId || "-";
             document.getElementById("currentDocumentOwnCode").innerText =
-                currentDocumentOwnCode || "-";
+                displayValue(currentDocumentOwnCode);
 
-            updatePaymentStatus("PENDING");
+            updatePaymentStatus(data.data.status || "WAITING");
             connectWebSocketAndSubscribe(currentPaymentId);
             startFallbackStatusCheck();
 
             addLog(
                 "QR generated | paymentId=" + currentPaymentId +
                 " | terminalId=" + currentTerminalId +
-                " | documentOwnCode=" + (currentDocumentOwnCode || "-")
+                " | documentOwnCode=" + displayValue(currentDocumentOwnCode)
             );
         } else {
             alert(data.message || "Error generating QR");
@@ -482,7 +518,11 @@ function handlePaymentEvent(event) {
         return;
     }
 
-    const status = (event.status || "UNKNOWN").toString();
+    if (event.eventType === "PHONEPE_PAYMENT_CONFIRMATION_REQUIRED") {
+        showPhonePeConfirmation(event);
+    }
+
+    const status = (event.status || getStatusFromEventType(event.eventType) || "UNKNOWN").toString();
     const normalizedStatus = status.toUpperCase();
     updatePaymentStatus(status);
 
@@ -492,18 +532,171 @@ function handlePaymentEvent(event) {
 
     addLog(
         "Payment event | paymentId=" + event.paymentId +
+        " | eventType=" + (event.eventType || "-") +
         " | status=" + status +
         " | txnRef=" + (event.transactionRef || "")
     );
 
-    if (normalizedStatus === "SUCCESS") {
+    if (isSuccessfulPaymentStatus(normalizedStatus)) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
-        alert("Payment Successful ✅");
+        hidePhonePeConfirmation();
+        showPaymentSuccessAlert("Payment Successful");
     } else if (isFinalPaymentStatus(status)) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
+        if (normalizedStatus !== "PHONEPE_MATCHED_WAITING_CONFIRMATION") {
+            hidePhonePeConfirmation();
+        }
     }
+}
+
+function getStatusFromEventType(eventType) {
+    if (eventType === "PHONEPE_PAYMENT_CONFIRMATION_REQUIRED") {
+        return "PHONEPE_MATCHED_WAITING_CONFIRMATION";
+    }
+
+    return "";
+}
+
+function showPhonePeConfirmation(event) {
+    currentPhonePeNotificationId = event.notificationId;
+
+    document.getElementById("phonePeConfirmationPanel").style.display = "block";
+    document.getElementById("phonePeConfirmationMessage").innerText =
+        event.message || "PhonePe payment received. Please confirm after checking customer.";
+    document.getElementById("phonePeNotificationId").innerText =
+        displayValue(event.notificationId);
+    document.getElementById("phonePeAmount").innerText =
+        displayValue(event.amount);
+    document.getElementById("phonePePayer").innerText =
+        displayValue(event.payerName);
+    document.getElementById("phonePeConfirmBtn").disabled = false;
+    document.getElementById("phonePeRejectBtn").disabled = false;
+
+    addLog(
+        "PhonePe confirmation required | notificationId=" +
+        displayValue(event.notificationId) +
+        " | amount=" +
+        displayValue(event.amount) +
+        " | payer=" +
+        displayValue(event.payerName)
+    );
+}
+
+function hidePhonePeConfirmation() {
+    currentPhonePeNotificationId = null;
+
+    document.getElementById("phonePeConfirmationPanel").style.display = "none";
+    document.getElementById("phonePeConfirmationMessage").innerText =
+        "Waiting for PhonePe match";
+    document.getElementById("phonePeNotificationId").innerText = "-";
+    document.getElementById("phonePeAmount").innerText = "-";
+    document.getElementById("phonePePayer").innerText = "-";
+    document.getElementById("phonePeRejectReason").value = "";
+    document.getElementById("phonePeConfirmBtn").disabled = true;
+    document.getElementById("phonePeRejectBtn").disabled = true;
+}
+
+async function confirmPhonePePayment() {
+    const cashierId = parseOptionalInteger(document.getElementById("cashierId").value.trim());
+
+    if (!currentPaymentId || !currentPhonePeNotificationId) {
+        alert("No PhonePe payment is waiting for confirmation");
+        return;
+    }
+
+    if (!cashierId || Number.isNaN(cashierId)) {
+        alert("Please enter cashier ID before confirming");
+        return;
+    }
+
+    await submitPhonePeAction("confirm", {
+        cashierId: cashierId,
+        notificationId: currentPhonePeNotificationId
+    });
+}
+
+async function rejectPhonePePayment() {
+    const cashierId = parseOptionalInteger(document.getElementById("cashierId").value.trim());
+    const reason = document.getElementById("phonePeRejectReason").value.trim();
+
+    if (!currentPaymentId || !currentPhonePeNotificationId) {
+        alert("No PhonePe payment is waiting for rejection");
+        return;
+    }
+
+    if (!cashierId || Number.isNaN(cashierId)) {
+        alert("Please enter cashier ID before rejecting");
+        return;
+    }
+
+    if (!reason) {
+        alert("Please enter reject reason");
+        return;
+    }
+
+    await submitPhonePeAction("reject", {
+        cashierId: cashierId,
+        notificationId: currentPhonePeNotificationId,
+        reason: reason
+    });
+}
+
+async function submitPhonePeAction(action, request) {
+    setPhonePeActionButtonsDisabled(true);
+
+    try {
+        const data = await fetchJson(
+            PAYMENTS_BASE_URL +
+            "/" +
+            encodeURIComponent(currentPaymentId) +
+            "/phonepe/" +
+            action,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(request)
+            }
+        );
+
+        if (data.success) {
+            const status = data.data && data.data.status
+                ? data.data.status
+                : action === "confirm"
+                    ? "PAID_CONFIRMED_BY_CASHIER"
+                    : "WAITING";
+
+            updatePaymentStatus(status);
+            addLog("PhonePe " + action + " success: " + (data.message || ""));
+
+            if (action === "confirm") {
+                clearFallbackStatusCheck();
+                unsubscribeCurrentPayment();
+                hidePhonePeConfirmation();
+                showPaymentSuccessAlert("PhonePe payment confirmed successfully.");
+            } else {
+                hidePhonePeConfirmation();
+                startFallbackStatusCheck();
+            }
+        } else {
+            alert(data.message || "PhonePe " + action + " failed");
+            addLog("PhonePe " + action + " failed: " + (data.message || ""));
+            setPhonePeActionButtonsDisabled(false);
+        }
+    } catch (e) {
+        console.error("PhonePe " + action + " error:", e);
+        alert("PhonePe " + action + " failed");
+        addLog("PhonePe " + action + " error: " + e);
+        setPhonePeActionButtonsDisabled(false);
+    }
+}
+
+function setPhonePeActionButtonsDisabled(disabled) {
+    document.getElementById("phonePeConfirmBtn").disabled = disabled;
+    document.getElementById("phonePeRejectBtn").disabled = disabled;
 }
 
 function unsubscribeCurrentPayment() {
@@ -561,8 +754,11 @@ function updatePaymentStatus(status) {
 function getPaymentStatusClass(status) {
     const value = (status || "").toUpperCase();
 
-    if (value === "SUCCESS") return "success";
-    if (value === "FAILED" || value === "EXPIRED") return "failed";
+    if (isSuccessfulPaymentStatus(value)) return "success";
+    if (value === "PHONEPE_MATCHED_WAITING_CONFIRMATION" || value === "MATCHED_WAITING_CONFIRMATION") {
+        return "action-required";
+    }
+    if (value === "FAILED" || value === "EXPIRED" || value === "REJECTED_BY_CASHIER") return "failed";
     return "pending";
 }
 
@@ -572,12 +768,15 @@ function resetUiForNewPayment() {
     currentPaymentId = null;
     currentTerminalId = null;
     currentDocumentOwnCode = null;
+    currentPhonePeNotificationId = null;
+    successAlertShown = false;
 
-    updatePaymentStatus("PENDING");
+    updatePaymentStatus("WAITING");
     document.getElementById("paymentId").innerText = "-";
     document.getElementById("transactionRef").innerText = "-";
     document.getElementById("currentTerminalId").innerText = "-";
     document.getElementById("currentDocumentOwnCode").innerText = "-";
+    hidePhonePeConfirmation();
 
     document.getElementById("qrImage").src = "";
     document.getElementById("qrImage").style.display = "none";
@@ -612,6 +811,12 @@ async function checkPaymentStatus() {
             const status = data.data.status || "UNKNOWN";
             updatePaymentStatus(status);
 
+            if ((status || "").toUpperCase() === "PHONEPE_MATCHED_WAITING_CONFIRMATION") {
+                document.getElementById("phonePeConfirmationPanel").style.display = "block";
+                document.getElementById("phonePeConfirmationMessage").innerText =
+                    "PhonePe payment matched. Waiting for websocket notification details before confirmation.";
+            }
+
             if (data.data.transactionRef) {
                 document.getElementById("transactionRef").innerText =
                     data.data.transactionRef;
@@ -628,8 +833,10 @@ async function checkPaymentStatus() {
                 clearFallbackStatusCheck();
                 unsubscribeCurrentPayment();
 
-                if (status.toUpperCase() === "SUCCESS") {
-                    alert("Payment Successful ✅");
+                hidePhonePeConfirmation();
+
+                if (isSuccessfulPaymentStatus(status)) {
+                    showPaymentSuccessAlert("Payment Successful");
                 }
             }
         }
@@ -642,11 +849,30 @@ async function checkPaymentStatus() {
 function isFinalPaymentStatus(status) {
     const value = (status || "").toUpperCase();
     return (
-        value === "SUCCESS" ||
+        isSuccessfulPaymentStatus(value) ||
         value === "FAILED" ||
         value === "PENDING_REVIEW" ||
-        value === "EXPIRED"
+        value === "EXPIRED" ||
+        value === "REJECTED_BY_CASHIER"
     );
+}
+
+function isSuccessfulPaymentStatus(status) {
+    const value = (status || "").toUpperCase();
+    return (
+        value === "SUCCESS" ||
+        value === "PAID_AUTO_VERIFIED" ||
+        value === "PAID_CONFIRMED_BY_CASHIER"
+    );
+}
+
+function showPaymentSuccessAlert(message) {
+    if (successAlertShown) {
+        return;
+    }
+
+    successAlertShown = true;
+    alert(message);
 }
 
 function clearFallbackStatusCheck() {
