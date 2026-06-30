@@ -526,6 +526,10 @@ function handlePaymentEvent(event) {
     const normalizedStatus = status.toUpperCase();
     updatePaymentStatus(status);
 
+    if (!isPhonePeConfirmationStatus(normalizedStatus)) {
+        hidePhonePeConfirmation();
+    }
+
     if (event.transactionRef) {
         document.getElementById("transactionRef").innerText = event.transactionRef;
     }
@@ -540,14 +544,10 @@ function handlePaymentEvent(event) {
     if (isSuccessfulPaymentStatus(normalizedStatus)) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
-        hidePhonePeConfirmation();
         showPaymentSuccessAlert("Payment Successful");
     } else if (isFinalPaymentStatus(status)) {
         clearFallbackStatusCheck();
         unsubscribeCurrentPayment();
-        if (normalizedStatus !== "PHONEPE_MATCHED_WAITING_CONFIRMATION") {
-            hidePhonePeConfirmation();
-        }
     }
 }
 
@@ -667,11 +667,14 @@ async function submitPhonePeAction(action, request) {
         );
 
         if (data.success) {
-            const status = data.data && data.data.status
+            const responseStatus = data.data && data.data.status
                 ? data.data.status
                 : action === "confirm"
                     ? "PAID_CONFIRMED_BY_CASHIER"
                     : "WAITING";
+            const status = action === "reject" && responseStatus === "REJECTED_BY_CASHIER"
+                ? "WAITING"
+                : responseStatus;
 
             updatePaymentStatus(status);
             addLog("PhonePe " + action + " success: " + (data.message || ""));
@@ -759,7 +762,7 @@ function getPaymentStatusClass(status) {
     const value = (status || "").toUpperCase();
 
     if (isSuccessfulPaymentStatus(value)) return "success";
-    if (value === "PHONEPE_MATCHED_WAITING_CONFIRMATION" || value === "MATCHED_WAITING_CONFIRMATION") {
+    if (isPhonePeConfirmationStatus(value)) {
         return "action-required";
     }
     if (value === "FAILED" || value === "EXPIRED" || value === "REJECTED_BY_CASHIER") return "failed";
@@ -815,8 +818,10 @@ async function checkPaymentStatus() {
             const status = data.data.status || "UNKNOWN";
             updatePaymentStatus(status);
 
-            if ((status || "").toUpperCase() === "PHONEPE_MATCHED_WAITING_CONFIRMATION") {
+            if (isPhonePeConfirmationStatus(status)) {
                 showPhonePeConfirmation(data.data);
+            } else {
+                hidePhonePeConfirmation();
             }
 
             if (data.data.transactionRef) {
@@ -856,6 +861,14 @@ function isFinalPaymentStatus(status) {
         value === "PENDING_REVIEW" ||
         value === "EXPIRED" ||
         value === "REJECTED_BY_CASHIER"
+    );
+}
+
+function isPhonePeConfirmationStatus(status) {
+    const value = (status || "").toUpperCase();
+    return (
+        value === "PHONEPE_MATCHED_WAITING_CONFIRMATION" ||
+        value === "MATCHED_WAITING_CONFIRMATION"
     );
 }
 
