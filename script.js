@@ -561,6 +561,10 @@ function getStatusFromEventType(eventType) {
 
 function showPhonePeConfirmation(event) {
     currentPhonePeNotificationId = event.notificationId;
+    const hasNotificationId =
+        event.notificationId !== null &&
+        event.notificationId !== undefined &&
+        event.notificationId !== "";
 
     document.getElementById("phonePeConfirmationPanel").style.display = "block";
     document.getElementById("phonePeConfirmationMessage").innerText =
@@ -571,8 +575,8 @@ function showPhonePeConfirmation(event) {
         displayValue(event.amount);
     document.getElementById("phonePePayer").innerText =
         displayValue(event.payerName);
-    document.getElementById("phonePeConfirmBtn").disabled = false;
-    document.getElementById("phonePeRejectBtn").disabled = false;
+    document.getElementById("phonePeConfirmBtn").disabled = !hasNotificationId;
+    document.getElementById("phonePeRejectBtn").disabled = !hasNotificationId;
 
     addLog(
         "PhonePe confirmation required | notificationId=" +
@@ -812,9 +816,7 @@ async function checkPaymentStatus() {
             updatePaymentStatus(status);
 
             if ((status || "").toUpperCase() === "PHONEPE_MATCHED_WAITING_CONFIRMATION") {
-                document.getElementById("phonePeConfirmationPanel").style.display = "block";
-                document.getElementById("phonePeConfirmationMessage").innerText =
-                    "PhonePe payment matched. Waiting for websocket notification details before confirmation.";
+                showPhonePeConfirmation(data.data);
             }
 
             if (data.data.transactionRef) {
