@@ -667,14 +667,11 @@ async function submitPhonePeAction(action, request) {
         );
 
         if (data.success) {
-            const responseStatus = data.data && data.data.status
+            const status = data.data && data.data.status
                 ? data.data.status
                 : action === "confirm"
                     ? "PAID_CONFIRMED_BY_CASHIER"
                     : "WAITING";
-            const status = action === "reject" && responseStatus === "REJECTED_BY_CASHIER"
-                ? "WAITING"
-                : responseStatus;
 
             updatePaymentStatus(status);
             addLog("PhonePe " + action + " success: " + (data.message || ""));
@@ -686,7 +683,10 @@ async function submitPhonePeAction(action, request) {
                 showPaymentSuccessAlert("PhonePe payment confirmed successfully.");
             } else {
                 hidePhonePeConfirmation();
-                startFallbackStatusCheck();
+                const latestStatus = await checkPaymentStatus();
+                if (!isFinalPaymentStatus(latestStatus)) {
+                    startFallbackStatusCheck();
+                }
             }
         } else {
             alert(data.message || "PhonePe " + action + " failed");
@@ -806,12 +806,12 @@ function startFallbackStatusCheck() {
 async function checkPaymentStatus() {
     if (!currentPaymentId) {
         clearFallbackStatusCheck();
-        return;
+        return "";
     }
 
     try {
         const data = await fetchJson(
-            PAYMENT_BASE_URL + "/status/" + currentPaymentId
+            PAYMENT_BASE_URL + "/status/" + encodeURIComponent(currentPaymentId)
         );
 
         if (data.success && data.data) {
@@ -846,11 +846,15 @@ async function checkPaymentStatus() {
                     showPaymentSuccessAlert("Payment Successful");
                 }
             }
+
+            return status;
         }
     } catch (e) {
         console.error("Fallback status check error:", e);
         addLog("Fallback status check error: " + e);
     }
+
+    return "";
 }
 
 function isFinalPaymentStatus(status) {
