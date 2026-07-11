@@ -21,6 +21,7 @@ const PAYMENTS_BASE_URL = API_BASE_URL + "/api/payments";
 const DEVICE_BASE_URL = API_BASE_URL + "/api/device";
 const WS_URL = API_BASE_URL + "/ws?ngrok-skip-browser-warning=true";
 const FALLBACK_STATUS_INTERVAL_MS = 3000;
+const GENERATED_SOURCE_APP = "GOOGLE_PAY";
 const NGROK_HEADERS = {
     "ngrok-skip-browser-warning": "true"
 };
@@ -86,6 +87,10 @@ function getQrImageSource(qrImageBase64) {
     }
 
     return "data:image/png;base64," + qrImageBase64;
+}
+
+function generateSourceApp() {
+    return GENERATED_SOURCE_APP;
 }
 
 function renderDepartmentOptions(departments) {
@@ -365,7 +370,7 @@ async function generateQr() {
     const merchantName = document.getElementById("merchantName").value.trim();
     const upiId = document.getElementById("upiId").value.trim();
     const amount = parseFloat(document.getElementById("amount").value);
-    const sourceApp = document.getElementById("sourceApp").value;
+    const sourceApp = generateSourceApp();
     const documentOwnCodeValue = document.getElementById("documentOwnCode").value.trim();
 
     const documentOwnCode = parseOptionalInteger(documentOwnCodeValue);
