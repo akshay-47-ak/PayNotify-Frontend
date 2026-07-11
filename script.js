@@ -76,6 +76,18 @@ function displayValue(value) {
     return value === null || value === undefined || value === "" ? "-" : value;
 }
 
+function getQrImageSource(qrImageBase64) {
+    if (!qrImageBase64) {
+        return "";
+    }
+
+    if (qrImageBase64.indexOf("data:image/") === 0) {
+        return qrImageBase64;
+    }
+
+    return "data:image/png;base64," + qrImageBase64;
+}
+
 function renderDepartmentOptions(departments) {
     const departmentSelect = document.getElementById("enterpriseDepartment");
     departmentSelect.innerHTML = '<option value="">Select department</option>';
@@ -353,6 +365,7 @@ async function generateQr() {
     const merchantName = document.getElementById("merchantName").value.trim();
     const upiId = document.getElementById("upiId").value.trim();
     const amount = parseFloat(document.getElementById("amount").value);
+    const sourceApp = document.getElementById("sourceApp").value;
     const documentOwnCodeValue = document.getElementById("documentOwnCode").value.trim();
 
     const documentOwnCode = parseOptionalInteger(documentOwnCodeValue);
@@ -363,7 +376,7 @@ async function generateQr() {
         merchantName: merchantName,
         upiId: upiId,
         amount: amount,
-        sourceApp: "WEB",
+        sourceApp: sourceApp,
         documentOwnCode: documentOwnCode
     };
 
@@ -377,8 +390,18 @@ async function generateQr() {
         return;
     }
 
-    if (!request.merchantName || !request.upiId || !request.amount) {
+    if (!request.merchantName || !request.upiId) {
         alert("Please fill all payment fields");
+        return;
+    }
+
+    if (Number.isNaN(request.amount) || request.amount <= 0) {
+        alert("Please enter a valid amount greater than zero");
+        return;
+    }
+
+    if (request.sourceApp !== "GOOGLE_PAY" && request.sourceApp !== "PHONEPE") {
+        alert("Please select payment app");
         return;
     }
 
@@ -399,8 +422,7 @@ async function generateQr() {
         if (data.success && data.data) {
             const qrBase64 = data.data.qrImageBase64;
 
-            document.getElementById("qrImage").src =
-                "data:image/png;base64," + qrBase64;
+            document.getElementById("qrImage").src = getQrImageSource(qrBase64);
 
             currentPaymentId = data.data.paymentId;
             currentTerminalId = data.data.terminalId || request.terminalId;
@@ -423,6 +445,7 @@ async function generateQr() {
             addLog(
                 "QR generated | paymentId=" + currentPaymentId +
                 " | terminalId=" + currentTerminalId +
+                " | sourceApp=" + (data.data.sourceApp || request.sourceApp) +
                 " | documentOwnCode=" + displayValue(currentDocumentOwnCode)
             );
         } else {
