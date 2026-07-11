@@ -354,13 +354,8 @@ async function generateQr() {
     const upiId = document.getElementById("upiId").value.trim();
     const amount = parseFloat(document.getElementById("amount").value);
     const documentOwnCodeValue = document.getElementById("documentOwnCode").value.trim();
-    const cashierIdValue = document.getElementById("cashierId").value.trim();
-    const cashierSessionId = document.getElementById("cashierSessionId").value.trim();
-    const branchIdValue = document.getElementById("branchId").value.trim();
 
     const documentOwnCode = parseOptionalInteger(documentOwnCodeValue);
-    const cashierId = parseOptionalInteger(cashierIdValue);
-    const branchId = parseOptionalInteger(branchIdValue);
 
     const request = {
         enterpriseCode: enterpriseCode,
@@ -369,10 +364,7 @@ async function generateQr() {
         upiId: upiId,
         amount: amount,
         sourceApp: "WEB",
-        documentOwnCode: documentOwnCode,
-        cashierId: cashierId,
-        cashierSessionId: cashierSessionId || null,
-        branchId: branchId
+        documentOwnCode: documentOwnCode
     };
 
     if (!request.enterpriseCode) {
@@ -392,16 +384,6 @@ async function generateQr() {
 
     if (documentOwnCodeValue && Number.isNaN(documentOwnCode)) {
         alert("Please enter valid document own code");
-        return;
-    }
-
-    if (cashierIdValue && Number.isNaN(cashierId)) {
-        alert("Please enter valid cashier ID");
-        return;
-    }
-
-    if (branchIdValue && Number.isNaN(branchId)) {
-        alert("Please enter valid branch ID");
         return;
     }
 
@@ -603,35 +585,21 @@ function hidePhonePeConfirmation() {
 }
 
 async function confirmPhonePePayment() {
-    const cashierId = parseOptionalInteger(document.getElementById("cashierId").value.trim());
-
     if (!currentPaymentId || !currentPhonePeNotificationId) {
         alert("No PhonePe payment is waiting for confirmation");
         return;
     }
 
-    if (!cashierId || Number.isNaN(cashierId)) {
-        alert("Please enter cashier ID before confirming");
-        return;
-    }
-
     await submitPhonePeAction("confirm", {
-        cashierId: cashierId,
         notificationId: currentPhonePeNotificationId
     });
 }
 
 async function rejectPhonePePayment() {
-    const cashierId = parseOptionalInteger(document.getElementById("cashierId").value.trim());
     const reason = document.getElementById("phonePeRejectReason").value.trim();
 
     if (!currentPaymentId || !currentPhonePeNotificationId) {
         alert("No PhonePe payment is waiting for rejection");
-        return;
-    }
-
-    if (!cashierId || Number.isNaN(cashierId)) {
-        alert("Please enter cashier ID before rejecting");
         return;
     }
 
@@ -641,7 +609,6 @@ async function rejectPhonePePayment() {
     }
 
     await submitPhonePeAction("reject", {
-        cashierId: cashierId,
         notificationId: currentPhonePeNotificationId,
         reason: reason
     });

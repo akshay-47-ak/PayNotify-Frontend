@@ -85,12 +85,6 @@ body {
     margin-bottom: 16px;
 }
 
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-
 label {
     display: block;
     margin-bottom: 8px;
@@ -380,7 +374,6 @@ input[readonly] {
         gap: 10px;
     }
 
-    .form-row,
     .confirmation-actions {
         grid-template-columns: 1fr;
     }
